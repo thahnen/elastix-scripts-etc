@@ -250,7 +250,7 @@ if __name__ == "__main__":
     # Dimensions of output voxel box
     information[2] += str(width) + " " + str(height) + " " + str(len(files))
     
-    # Data type of image(s)
+    # Data type of image(s) (https://pillow.readthedocs.io/en/5.1.x/handbook/concepts.html#modes)
     if bit_depth in ['1', 'L', 'P', 'RGB', 'RGBA', 'CMYK', 'YCbCr', 'LAB', 'HSV']:
         # Everything 1 Byte data types -> MET_UCHAR or MET_CHAR (assume first)
         information[3] += "MET_UCHAR"
@@ -318,5 +318,9 @@ if __name__ == "__main__":
         elif "MET_FLOAT" in information[3]:
             dtype = numpy.single
         
+        # Rad image to array
         image_2d = numpy.array(Image.open(files[0]))
-        image_2d.astype(dtype).tofile(raw_filename)
+
+        # Save array to file (https://gist.github.com/jdumas/280952624ea4ad68e385b77cdba632c1#file-volume-py-L39)
+        with open(raw_filename, "wb") as raw:
+            raw.write(bytearray(image_2d.astype(dtype).flatten()))
