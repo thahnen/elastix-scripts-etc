@@ -15,13 +15,13 @@ from PIL import Image
 #       Prints the help message (also done when the parameters where wrong!)
 # ================================================================================
 def printHelp():
-    print("\nimg2mhd.py : Converting an image and metadate to the mhd format\n"
-            + "===============================================================\n")
+    print("\nimg2mhd.py : Converting sliced image(s) and metadate to the mhd format\n"
+            + "======================================================================\n")
 
     print("USAGE:\n"
             + "\tpython3 img2mhd.py -type {Image Type} -in {Files} -meta {Files} -out {File}\n\n"
             + "Input image type:\t{jpg/jpeg | png | gif | tiff | rgb | pbm/pgm | rast | xbm | bmp}\n"
-            + "Input files:\t\t{Single image file | Folder containing images}\n"
+            + "Input files:\t\t{Single image file | Folder containing sorted images}\n"
             + "Meta information:\tMeta.json\n"
             + "Output file:\t\t{Output filename | Output folder}\n")
 
@@ -29,7 +29,7 @@ def printHelp():
 
 # ================================================================================
 #                   Returns the image header size in bytes
-#           TODO: append information for other types fomr imghdr.py!
+#           TODO: append information for other types from imghdr.py!
 # ================================================================================
 def getHeaderSize(path):
     if (os.path.isfile(path)):
@@ -67,6 +67,17 @@ def getHeaderSize(path):
             pass
 
     return None
+
+
+# ================================================================================
+#           Returns the name of the dict field searched for using regex
+# ================================================================================
+def getFieldName(name, data):
+    out = list(filter(re.compile(
+        r'(?i)%s$' % name.replace(" ", " +")
+    ).match, data))
+    
+    return out[0] if len(out) == 1 else None
 
 
 
@@ -143,6 +154,16 @@ def validateImage(path, img_type):
 
 # ================================================================================
 #                   Check if Meta.json is formatted correctly
+#
+#   File should include MRA field, looking sth. like this:
+#   "MRA" : {
+#       "rows" : Int
+#       "columns" : Int
+#       "number of slices" : Int => should equal number of given images!
+#       "slice thickness" : Float
+#       "slice spacing" : Float
+#       "pixel spacing" : [Float, Float]
+#   }
 # ================================================================================
 def validateMeta(path):
     with open(path, "r") as in_file:
@@ -150,17 +171,25 @@ def validateMeta(path):
     
     cols = rows = pxl_size = pxl_space_x = pxl_space_y = pxl_space_z = None
 
-    # Check JSON structure for every field necessary!
-    if "MRA" in data:
-        data = data["MRA"]
-        if "columns" in data and "rows" in data and "pixel spacing" in data \
-            and "slice spacing" in data and "slice thickness" in data:
-            cols = data["columns"]
-            rows = data["rows"]
-            pxl_size = data["slice thickness"]
-            pxl_space_x = data["pixel spacing"][0]
-            pxl_space_y = data["pixel spacing"][1]
-            pxl_space_z = data["slice spacing"]
+    # Check if there is a MRA field in JSON
+    found = getFieldName("mra", data)
+    if found != None:
+        data = data[found]
+        
+        found = [
+            getFieldName("columns", data),
+            getFieldName("rows", data),
+            getFieldName("slice thickness", data),
+            getFieldName("pixel spacing", data),
+            getFieldName("slice spacing", data)
+        ]
+        if not None in found:
+            cols = data[found[0]]
+            rows = data[found[1]]
+            pxl_size = data[found[2]]
+            pxl_space_x = data[found[3]][0]
+            pxl_space_y = data[found[3]][1]
+            pxl_space_z = data[found[4]]
 
     return cols, rows, pxl_size, pxl_space_x, pxl_space_y, pxl_space_z
 
