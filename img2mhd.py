@@ -15,12 +15,12 @@ from PIL import Image
 #       Prints the help message (also done when the parameters where wrong!)
 # ================================================================================
 def printHelp():
-    print("\nimg2mhd.py : Converting sliced image(s) and metadate to the mhd format\n"
-            + "======================================================================\n")
+    print("\nimg2mhd.py : Converting sliced image(s) and metadata to mhd (+raw) format\n"
+            + "=========================================================================\n")
 
     print("USAGE:\n"
             + "\tpython3 img2mhd.py -type {Image Type} -in {Files} -meta {Files} -out {File}\n\n"
-            + "Input image type:\t{jpg/jpeg | png | gif | tiff | rgb | pbm/pgm | rast | xbm | bmp}\n"
+            + "Input image type:\t{jpg/jpeg | png | gif | tiff | bmp | rgb | pbm/pgm/ppm | webp}\n"
             + "Input files:\t\t{Single image file | Folder containing sorted images}\n"
             + "Meta information:\tMeta.json\n"
             + "Output file:\t\t{Output filename | Output folder}\n")
@@ -29,7 +29,6 @@ def printHelp():
 
 # ================================================================================
 #                   Returns the image header size in bytes
-#           TODO: append information for other types from imghdr.py!
 # ================================================================================
 def getHeaderSize(path):
     if (os.path.isfile(path)):
@@ -59,10 +58,19 @@ def getHeaderSize(path):
         elif ft == "pgm":
             # Header: 0x50320a / 0x50350a
             return 3
-        elif ft == "xbm":
-            # Header: ?
+        elif ft == "ppm":
+            # Header: 0x50330a / 0x50360a
+            return 3
+        elif ft == "webp":
+            # Header: "Magic Number" (0x52494646) + 4 Byte file size + (0x57454250)
+            return 20
+        elif ft == "exr":
+            # Header: "Magic Number" (0x762f3101)
             pass
         elif ft == "rast":
+            # Header: ?
+            pass
+        elif ft == "xbm":
             # Header: ?
             pass
 
@@ -122,7 +130,7 @@ def validateParameters(args):
         assert bool(re.search(r'(?i)meta.json', args[idx_me+1]))
         meta_json = args[idx_me+1]
     except Exception:
-        # No Meta.json given (or using another name)
+        # No Meta.json given (or using another name which is not implemented yet!)
         return None
     
     # Return everything structured

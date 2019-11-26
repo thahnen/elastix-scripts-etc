@@ -26,18 +26,18 @@ Maybe change **Meta.json** to sth. more convenient:
     [...],
 
     "MRA" : {
-        "number of slices" : Int,
-        "columns" : Int,
-        "rows" : Int,
+        "number of slices" : "Int",
+        "columns" : "Int",
+        "rows" : "Int",
         "pixel spacing" : [
-            Float (X),
-            Float (Y),
-            Float (Z)
+            "Float (X)",
+            "Float (Y)",
+            "Float (Z)"
         ],
         "pixel thickness" : [
-            Float (X),
-            Float (Y),
-            Float (Z)
+            "Float (X)",
+            "Float (Y)",
+            "Float (Z)"
         ],
         [...]
     },
