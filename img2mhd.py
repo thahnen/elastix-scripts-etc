@@ -19,8 +19,9 @@ def printHelp():
             + "=========================================================================\n")
 
     print("USAGE:\n"
-            + "\tpython3 img2mhd.py -type {Image Type} -in {Files} -meta {Files} -out {File}\n\n"
+            + "\tpython3 img2mhd.py -type {Image Type} -series {Series} -in {Files} -meta {Files} -out {File}\n\n"
             + "Input image type:\t{jpg/jpeg | png | gif | tiff | bmp | rgb | pbm/pgm/ppm | webp}\n"
+            + "Input series:\t\t{MRA | DSA}\n"
             + "Input files:\t\t{Single image file | Folder containing sorted images}\n"
             + "Meta information:\tMeta.json\n"
             + "Output file:\t\t{Output filename | Output folder}\n")
@@ -33,7 +34,7 @@ def printHelp():
 def getHeaderSize(path):
     if (os.path.isfile(path)):
         ft = imghdr.what(path)
-        
+
         if ft == "jpeg":
             # Header: 0xffd8
             return 2
@@ -84,7 +85,7 @@ def getFieldName(name, data):
     out = list(filter(re.compile(
         r'(?i)%s$' % name.replace(" ", " +")
     ).match, data))
-    
+
     return out[0] if len(out) == 1 else None
 
 
@@ -105,6 +106,16 @@ def validateParameters(args):
     del args[idx_type]
 
     try:
+        idx_series = args.index("-series")
+        img_series = args[idx_series+1]
+    except Exception:
+        # No series given!
+        return None
+
+    del args[idx_series+1]
+    del args[idx_series]
+
+    try:
         idx_in = args.index("-in")
         img_path = args[idx_in+1]
     except Exception:
@@ -120,7 +131,7 @@ def validateParameters(args):
     except Exception:
         # No output folder given
         return None
-    
+
     del args[idx_out+1]
     del args[idx_out]
 
@@ -132,14 +143,22 @@ def validateParameters(args):
     except Exception:
         # No Meta.json given (or using another name which is not implemented yet!)
         return None
-    
+
     # Return everything structured
     return {
         "in_meta" : meta_json,
+        "in_series": img_series,
         "in_img" :  img_path,
         "img_type" : img_type,
         "out_path" : out_path
     }
+
+
+# ================================================================================
+#                       Validate given Series (MRA / DSA)
+# ================================================================================
+def validateSeries(given):
+    return given.upper() in ["DSA", "MRA"]
 
 
 # ================================================================================
@@ -149,6 +168,10 @@ def validateImage(path, img_type):
     files = []
     if os.path.isdir(path):
         for file in os.listdir(path):
+            # Disallow mask files
+            if "mask" in file:
+                continue
+
             # Check if file name ("type") equals given type
             if bool(re.search(img_type, file.split(".")[-1::][0], re.IGNORECASE)):
                 files.append(path + file)
@@ -176,14 +199,14 @@ def validateImage(path, img_type):
 def validateMeta(path):
     with open(path, "r") as in_file:
         data = json.load(in_file)
-    
+
     cols = rows = pxl_size = pxl_space_x = pxl_space_y = pxl_space_z = None
 
     # Check if there is a MRA field in JSON
     found = getFieldName("mra", data)
     if found != None:
         data = data[found]
-        
+
         found = [
             getFieldName("columns", data),
             getFieldName("rows", data),
@@ -211,8 +234,6 @@ def validateMeta(path):
 #   4) Validation of meta data
 #   5) MHD output
 #   6) RAW output (if file was given)
-#
-#   TODO: give option to set output file name!
 # ================================================================================
 if __name__ == "__main__":
     args = sys.argv[1::]
@@ -220,7 +241,7 @@ if __name__ == "__main__":
         print("No parameters where given!")
         printHelp()
         exit(1)
-    
+
 
     #   Validate parameters
     #   ===================
@@ -230,7 +251,16 @@ if __name__ == "__main__":
         print("Parameters are not correct!")
         printHelp()
         exit(2)
-    
+
+
+    #   Validate series
+    #   ===============
+    if not validateSeries(res["in_series"]):
+        # Series is neather DSA nor MRA
+        print("Wrong Series given!")
+        printHelp()
+        exit(3)
+
 
     #   Validate input file/ folder is correct
     #   ======================================
@@ -238,8 +268,8 @@ if __name__ == "__main__":
     if len(files) == 0:
         print("No suitable path given or directory does not contain images from given type!")
         printHelp()
-        exit(3)
-    
+        exit(4)
+
     header_size = getHeaderSize(files[0])
     im = Image.open(files[0])
     width, height = im.size
@@ -255,8 +285,8 @@ if __name__ == "__main__":
                 or width != lwidth or height != lheight or bit_depth != lbit_depth:
                 print("Images differ in type or size, information does not match!")
                 printHelp()
-                exit(4)
-    
+                exit(5)
+
 
     #   Validate meta data
     #   ==================
@@ -264,7 +294,7 @@ if __name__ == "__main__":
     if None in meta_info:
         print("Meta.json was not fully functional as relevant portions for MHD where missing!")
         printHelp()
-        exit(5)
+        exit(6)
 
 
     #   Create MHD file from skeleton
@@ -285,8 +315,12 @@ if __name__ == "__main__":
     ]
 
     # Dimensions of output voxel box
-    information[2] += str(width) + " " + str(height) + " " + str(len(files))
-    
+    information[2] += str(width) + " " + str(height)
+    if res["in_series"].upper() == "DSA":
+        information[2] += " " + 1
+    else:
+        information[2] += " " + str(len(files))
+
     # Data type of image(s) (https://pillow.readthedocs.io/en/5.1.x/handbook/concepts.html#modes)
     if bit_depth in ['1', 'L', 'P', 'RGB', 'RGBA', 'CMYK', 'YCbCr', 'LAB', 'HSV']:
         # Everything 1 Byte data types -> MET_UCHAR or MET_CHAR (assume first)
@@ -300,19 +334,26 @@ if __name__ == "__main__":
     else:
         print("The given image(s) bitdepth was not 8-Bit, 16-Bit, 32-Bit nor 64-Bit!")
         printHelp()
-        exit(6)
-    
+        exit(7)
+
     # HeaderSize (in Bytes, RAW have none)
     if len(files) != 1:
         information[4] += str(int(header_size/8))
     else:
         information[4] += str(0)
 
-    # ElementSize (X Y Z)
-    information[5] += str(meta_info[2]) + " " + str(meta_info[2]) + " " + str(meta_info[2])
+    if res["in_series"].upper() == "DSA":
+        # ElementSize (X Y Z)
+        information[5] += "1 1 1"
 
-    # ElementSpacing (X Y Z)
-    information[6] += str(meta_info[3]) + " " + str(meta_info[4]) + " " + str(meta_info[5])
+        # ElementSpacing (X Y Z)
+        information[6] += "1 1 1"
+    else:
+        # ElementSize (X Y Z)
+        information[5] += str(meta_info[2]) + " " + str(meta_info[2]) + " " + str(meta_info[2])
+
+        # ElementSpacing (X Y Z)
+        information[6] += str(meta_info[3]) + " " + str(meta_info[4]) + " " + str(meta_info[5])
 
     # ElementByteOrderMSB
     if sys.byteorder == "little":
@@ -321,14 +362,14 @@ if __name__ == "__main__":
         information[7] += "True"
 
     # ElementDataFile (one or list)
-    if len(files) != 1:
+    if res["in_series"] == "MRA":
         try:
             # sort by file names where filenames are numbers only (0.xyz ... 1000.xyz ...)
-            files.sort(key = lambda file: int(file.split("/")[-1::][0].split(".")[0]))
+            files.sort(key = lambda file: int(file.split(os.path.sep)[-1::][0].split(".")[0]))
         except Exception:
             print("MHD files require slices (images) to be sorted but given file names can not be sorted!")
             printHelp()
-            exit(7)
+            exit(8)
 
         information[8] += "LIST"
         for file in files:
@@ -336,10 +377,12 @@ if __name__ == "__main__":
     else:
         raw_filename = "output.raw"
         information[8] += raw_filename
-    
+
+    # Create output folder if nonexistant
+    os.makedirs(res["out_path"], exist_ok=True)
+
     # Output MHD skeleton to file
-    filename = "output.mhd"
-    with open(filename, "w+") as mhd:
+    with open(os.path.join(res["out_path"], "output.mhd"), "w") as mhd:
         for i in range(0, len(information)):
             mhd.write(information[i] + "\n")
 
@@ -354,10 +397,10 @@ if __name__ == "__main__":
             dtype = numpy.uint16
         elif "MET_FLOAT" in information[3]:
             dtype = numpy.single
-        
+
         # Rad image to array
         image_2d = numpy.array(Image.open(files[0]))
 
         # Save array to file (https://gist.github.com/jdumas/280952624ea4ad68e385b77cdba632c1#file-volume-py-L39)
-        with open(raw_filename, "wb") as raw:
+        with open(os.path.join(res["out_path"], raw_filename), "wb") as raw:
             raw.write(bytearray(image_2d.astype(dtype).flatten()))

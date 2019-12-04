@@ -41,7 +41,7 @@ Maybe change **Meta.json** to sth. more convenient:
         ],
         [...]
     },
-    
+
     [...]
 }
 ```
