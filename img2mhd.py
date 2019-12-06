@@ -36,16 +36,16 @@ def getHeaderSize(path):
         ft = imghdr.what(path)
 
         if ft == "jpeg":
-            # Header: 0xffd8
+            # Header: "Magic Number" (0xffd8)
             return 2
         elif ft == "png":
-            # Header: 0x89504e470d0a1a0a
+            # Header: "Magic Number" (0x89504e470d0a1a0a)
             return 8
         elif ft == "gif":
-            # Header: "GIF89a" (0x474946383961)/ "GIF87a" (0x474946383761)
+            # Header: "Magic Number" (0x474946383961 / 0x474946383761)
             return 6
         elif ft == "tiff":
-            # Header:
+            # Header: "Magic Number" (0x49492a00 / 0x4d4d002a)
             return 8
         elif ft == "bmp":
             # Header: "Magic Number" (0x424d) + 3 more information fields
@@ -57,13 +57,13 @@ def getHeaderSize(path):
             # Header: "Magic Number" (0x50310a / 0x50340a)
             return 3
         elif ft == "pgm":
-            # Header: 0x50320a / 0x50350a
+            # Header: "Magic Number" (0x50320a / 0x50350a)
             return 3
         elif ft == "ppm":
-            # Header: 0x50330a / 0x50360a
+            # Header: "Magic Number" (0x50330a / 0x50360a)
             return 3
         elif ft == "webp":
-            # Header: "Magic Number" (0x52494646) + 4 Byte file size + (0x57454250)
+            # Header: "Magic Number" (0x52494646) + 4 Byte information field + (0x57454250)
             return 20
         elif ft == "exr":
             # Header: "Magic Number" (0x762f3101)
@@ -137,9 +137,9 @@ def validateParameters(args):
 
     try:
         idx_me = args.index("-meta")
+        meta_json = args[idx_me+1]
 
         assert bool(re.search(r'(?i)meta.json', args[idx_me+1]))
-        meta_json = args[idx_me+1]
     except Exception:
         # No Meta.json given (or using another name which is not implemented yet!)
         return None
@@ -299,32 +299,33 @@ if __name__ == "__main__":
 
     #   Create MHD file from skeleton
     #   =============================
-    #   TODO: handle color depth of images better
     #   TODO: change multiple images to RAW
-    #   TODO: maybe create a folder with results at given output folder (xyz.out/)
+    #   TODO: Fields: Position, Orientation, AnatomicalOrientation, ElementNumberOfChannels
+    #   TODO: BinaryData + BinaryDataByteOrderMSB only when images converted to RAW
     information = [
         "ObejctType = Image",
         "NDims = 3",
         "DimSize = ",
         "ElementType = ",
-        "HeaderSize = -",
+        "HeaderSize = ",
+        "BinaryData = True ",
+        "BinaryDataByteOrderMSB = ",
         "ElementSize = ",
         "ElementSpacing = ",
         "ElementByteOrderMSB = ",
         "ElementDataFile = "
     ]
 
-    # Dimensions of output voxel box
-    information[2] += str(width) + " " + str(height)
-    if res["in_series"].upper() == "DSA":
-        information[2] += " " + 1
-    else:
-        information[2] += " " + str(len(files))
-
     # Data type of image(s) (https://pillow.readthedocs.io/en/5.1.x/handbook/concepts.html#modes)
-    if bit_depth in ['1', 'L', 'P', 'RGB', 'RGBA', 'CMYK', 'YCbCr', 'LAB', 'HSV']:
+    if bit_depth in ['1', 'L', 'La', 'LA', 'P', 'PA', 'RGB', 'RGBX', 'RGBa', 'RGBA', 'CMYK', 'YCbCr', 'LAB', 'HSV']:
         # Everything 1 Byte data types -> MET_UCHAR or MET_CHAR (assume first)
         information[3] += "MET_UCHAR"
+    elif bit_depth in ['I;16', 'I;16L', 'I;16B', 'I;16N', 'BGR;15', 'BGR;16']:
+        # 2 Byte unsigned integer pixels -> MET_USHORT
+        information[3] += "MET_USHORT"
+    elif bit_depth in ['BGR;24', 'BGR;32']:
+        # 4 Byte unsigned integer pixels -> MET_UINT
+        information[3] += "MET_UINT"
     elif bit_depth == "I":
         # 4 Byte signed integer pixels -> MET_INT
         information[3] += "MET_INT"
@@ -332,7 +333,7 @@ if __name__ == "__main__":
         # 4 Byte floating point pixels -> MET_FLOAT
         information[3] += "MET_FLOAT"
     else:
-        print("The given image(s) bitdepth was not 8-Bit, 16-Bit, 32-Bit nor 64-Bit!")
+        print(f"The given image(s) bitdepth was not 8-Bit, 16-Bit, 32-Bit, 64-Bit! or it was not implemented (correctly): {bit_depth}")
         printHelp()
         exit(7)
 
@@ -342,26 +343,38 @@ if __name__ == "__main__":
     else:
         information[4] += str(0)
 
+    # Dimensions of output voxel box (width + length)
+    information[2] += str(width) + " " + str(height)
+
     if res["in_series"].upper() == "DSA":
+        # Dimensions of output voxel box (height)
+        information[2] += " " + 1
+
         # ElementSize (X Y Z)
-        information[5] += "1 1 1"
+        information[7] += "1 1 1"
 
         # ElementSpacing (X Y Z)
-        information[6] += "1 1 1"
+        information[8] += "1 1 1"
     else:
+        # Dimensions of output voxel box (height)
+        information[2] += " " + str(len(files))
+
         # ElementSize (X Y Z)
-        information[5] += str(meta_info[2]) + " " + str(meta_info[2]) + " " + str(meta_info[2])
+        information[7] += str(meta_info[2]) + " " + str(meta_info[2]) + " " + str(meta_info[2])
 
         # ElementSpacing (X Y Z)
-        information[6] += str(meta_info[3]) + " " + str(meta_info[4]) + " " + str(meta_info[5])
+        information[8] += str(meta_info[3]) + " " + str(meta_info[4]) + " " + str(meta_info[5])
 
     # ElementByteOrderMSB
     if sys.byteorder == "little":
-        information[7] += "False"
+        information[6] += "False"
+        information[9] += "False"
     else:
-        information[7] += "True"
+        information[6] += "True"
+        information[9] += "True"
 
     # ElementDataFile (one or list)
+    # TODO: maybe append "LIST 2D" instead of "LIST" to line
     if res["in_series"] == "MRA":
         try:
             # sort by file names where filenames are numbers only (0.xyz ... 1000.xyz ...)
@@ -371,12 +384,12 @@ if __name__ == "__main__":
             printHelp()
             exit(8)
 
-        information[8] += "LIST"
+        information[10] += "LIST"
         for file in files:
             information.append(file)
     else:
         raw_filename = "output.raw"
-        information[8] += raw_filename
+        information[10] += raw_filename
 
     # Create output folder if nonexistant
     os.makedirs(res["out_path"], exist_ok=True)

@@ -11,7 +11,6 @@ Meta information (mainly fields) is case insensitive, so less error prone!
 
 ### TODO:
 More (not yet implemented) information fields in MHD file.
-- BinaryData (True / False)
 - CompressedData (True / False)
 - AnatomicalOrientation ([R|L] + [A|P] + [S|I])
 - TransformMatrix (Elements as list)
