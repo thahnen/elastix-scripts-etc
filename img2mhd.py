@@ -398,22 +398,21 @@ if __name__ == "__main__":
 
     #   Create RAW image if only one image is given
     #   ===========================================
-    if   "MET_CHAR" in information[3]:          dtype = numpy.int8 
-    elif "MET_UCHAR" in information[3]:         dtype = numpy.uint8
-    elif "MET_USHORT" in information[3]:        dtype = numpy.uint16
-    elif "MET_SHORT" in information[3]:         dtype = numpy.int16
-    elif "MET_UINT" in information[3]
-      or "MET-ULONG" in information[3]:         dtype = numpy.uint32
-    elif "MET_INT" in information[3]
-      or "MET_LONG" in information[3]:          dtype = numpy.int32
-    elif "MET_ULONG_LONG" in information[3]:    dtype = numpy.uint64
-    elif "MET_LONG_LONG" in information[3]:     dtype = numpy.int64
-    elif "MET_FLOAT" in information[3]:         dtype = numpy.single
-    elif "MET_DOUBLE" in information[3]:        dtype = numpy.double
+    if    "MET_CHAR" in information[3]:          dtype = numpy.int8 
+    elif  "MET_UCHAR" in information[3]:         dtype = numpy.uint8
+    elif  "MET_USHORT" in information[3]:        dtype = numpy.uint16
+    elif  "MET_SHORT" in information[3]:         dtype = numpy.int16
+    elif ("MET_UINT" in information[3] or
+          "MET-ULONG" in information[3]):        dtype = numpy.uint32
+    elif ("MET_INT" in information[3] or
+          "MET_LONG" in information[3]):         dtype = numpy.int32
+    elif  "MET_ULONG_LONG" in information[3]:    dtype = numpy.uint64
+    elif  "MET_LONG_LONG" in information[3]:     dtype = numpy.int64
+    elif  "MET_FLOAT" in information[3]:         dtype = numpy.single
+    elif  "MET_DOUBLE" in information[3]:        dtype = numpy.double
 
     for file in files:
         image_2d = numpy.array(Image.open(file))
-        print(f"Typen - MHD: {information[3]} - Numpy: {image_2d.dtype}")
 
         # Save array to file (https://gist.github.com/jdumas/280952624ea4ad68e385b77cdba632c1#file-volume-py-L39)
         with open(os.path.join(res["out_path"], file.split(os.path.sep)[-1::][0] + ".raw"), "wb") as raw:
