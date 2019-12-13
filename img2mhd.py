@@ -299,9 +299,7 @@ if __name__ == "__main__":
 
     #   Create MHD file from skeleton
     #   =============================
-    #   TODO: change multiple images to RAW
     #   TODO: Fields: Position, Orientation, AnatomicalOrientation, ElementNumberOfChannels
-    #   TODO: BinaryData + BinaryDataByteOrderMSB only when images converted to RAW
     information = [
         "ObejctType = Image",
         "NDims = 3",
@@ -339,7 +337,7 @@ if __name__ == "__main__":
 
     # HeaderSize (in Bytes, RAW have none)
     if len(files) != 1:
-        information[4] += str(int(header_size/8))
+        information[4] += str(0) #str(int(header_size/8))
     else:
         information[4] += str(0)
 
@@ -374,8 +372,7 @@ if __name__ == "__main__":
         information[9] += "True"
 
     # ElementDataFile (one or list)
-    # TODO: maybe append "LIST 2D" instead of "LIST" to line
-    if res["in_series"] == "MRA":
+    if len(files) != 1:
         try:
             # sort by file names where filenames are numbers only (0.xyz ... 1000.xyz ...)
             files.sort(key = lambda file: int(file.split(os.path.sep)[-1::][0].split(".")[0]))
@@ -384,12 +381,11 @@ if __name__ == "__main__":
             printHelp()
             exit(8)
 
-        information[10] += "LIST"
+        information[10] += "LIST 2D"
         for file in files:
-            information.append(file)
+            information.append(file.split(os.path.sep)[-1::][0] + ".raw")
     else:
-        raw_filename = "output.raw"
-        information[10] += raw_filename
+        information[10] += files[0].split(os.path.sep)[-1::][0] + ".raw"
 
     # Create output folder if nonexistant
     os.makedirs(res["out_path"], exist_ok=True)
@@ -402,18 +398,23 @@ if __name__ == "__main__":
 
     #   Create RAW image if only one image is given
     #   ===========================================
-    #   TODO: look for more possible file types
-    if "raw_filename" in locals():
-        if "MET_UCHAR" in information[3]:
-            dtype = numpy.uint8
-        elif "MET_INT" in information[3]:
-            dtype = numpy.uint16
-        elif "MET_FLOAT" in information[3]:
-            dtype = numpy.single
+    if   "MET_CHAR" in information[3]:          dtype = numpy.int8 
+    elif "MET_UCHAR" in information[3]:         dtype = numpy.uint8
+    elif "MET_USHORT" in information[3]:        dtype = numpy.uint16
+    elif "MET_SHORT" in information[3]:         dtype = numpy.int16
+    elif "MET_UINT" in information[3]
+      or "MET-ULONG" in information[3]:         dtype = numpy.uint32
+    elif "MET_INT" in information[3]
+      or "MET_LONG" in information[3]:          dtype = numpy.int32
+    elif "MET_ULONG_LONG" in information[3]:    dtype = numpy.uint64
+    elif "MET_LONG_LONG" in information[3]:     dtype = numpy.int64
+    elif "MET_FLOAT" in information[3]:         dtype = numpy.single
+    elif "MET_DOUBLE" in information[3]:        dtype = numpy.double
 
-        # Rad image to array
-        image_2d = numpy.array(Image.open(files[0]))
+    for file in files:
+        image_2d = numpy.array(Image.open(file))
+        print(f"Typen - MHD: {information[3]} - Numpy: {image_2d.dtype}")
 
         # Save array to file (https://gist.github.com/jdumas/280952624ea4ad68e385b77cdba632c1#file-volume-py-L39)
-        with open(os.path.join(res["out_path"], raw_filename), "wb") as raw:
+        with open(os.path.join(res["out_path"], file.split(os.path.sep)[-1::][0] + ".raw"), "wb") as raw:
             raw.write(bytearray(image_2d.astype(dtype).flatten()))
