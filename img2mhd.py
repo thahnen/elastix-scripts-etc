@@ -19,12 +19,13 @@ def printHelp():
             + "=========================================================================\n")
 
     print("USAGE:\n"
-            + "\tpython3 img2mhd.py -type {Image Type} -series {Series} -in {Files} -meta {Files} -out {File}\n\n"
+            + "\tpython3 img2mhd.py -type {Image Type} -series {Series} -in {Files} -meta {Files} -out {File} -raw {Type}\n\n"
             + "Input image type:\t{jpg/jpeg | png | gif | tiff | bmp | rgb | pbm/pgm/ppm | webp}\n"
             + "Input series:\t\t{MRA | DSA}\n"
             + "Input files:\t\t{Single image file | Folder containing sorted images}\n"
             + "Meta information:\tMeta.json\n"
-            + "Output file:\t\t{Output filename | Output folder}\n")
+            + "Output file:\t\t{Output filename | Output folder}\n"
+            + "Output RAW iamges:\t{Simple | Multiple}")
 
 
 
@@ -93,6 +94,7 @@ def getFieldName(name, data):
 # ================================================================================
 #               Validates that all parameters given are correct!
 #   TODO: handle meta information using other file name or another format
+#   TODO: handle default parameter
 # ================================================================================
 def validateParameters(args):
     try:
@@ -136,6 +138,16 @@ def validateParameters(args):
     del args[idx_out]
 
     try:
+        idx_raw = args.index("-raw")
+        out_raw = args[idx_raw+1]
+    except Exception:
+        # No info on simple or multiple raw output given
+        return None
+    
+    del args[idx_raw+1]
+    del args[idx_raw]
+
+    try:
         idx_me = args.index("-meta")
         meta_json = args[idx_me+1]
 
@@ -150,7 +162,8 @@ def validateParameters(args):
         "in_series": img_series,
         "in_img" :  img_path,
         "img_type" : img_type,
-        "out_path" : out_path
+        "out_path" : out_path,
+        "out_raw" : out_raw
     }
 
 
@@ -174,7 +187,7 @@ def validateImage(path, img_type):
 
             # Check if file name ("type") equals given type
             if bool(re.search(img_type, file.split(".")[-1::][0], re.IGNORECASE)):
-                files.append(path + file)
+                 files.append(os.path.join(path, file))
     elif os.path.isfile(path):
         # Check if file name ("type") equals given type
         if bool(re.search(img_type, path.split(".")[-1::][0], re.IGNORECASE)):
@@ -346,7 +359,7 @@ if __name__ == "__main__":
 
     if res["in_series"].upper() == "DSA":
         # Dimensions of output voxel box (height)
-        information[2] += " " + 1
+        information[2] += " " + str(len(files))
 
         # ElementSize (X Y Z)
         information[7] += "1 1 1"
@@ -372,7 +385,7 @@ if __name__ == "__main__":
         information[9] += "True"
 
     # ElementDataFile (one or list)
-    if len(files) != 1:
+    if len(files) != 1 and res["out_raw"] != "Simple":
         try:
             # sort by file names where filenames are numbers only (0.xyz ... 1000.xyz ...)
             files.sort(key = lambda file: int(file.split(os.path.sep)[-1::][0].split(".")[0]))
@@ -411,9 +424,19 @@ if __name__ == "__main__":
     elif  "MET_FLOAT" in information[3]:         dtype = numpy.single
     elif  "MET_DOUBLE" in information[3]:        dtype = numpy.double
 
-    for file in files:
-        image_2d = numpy.array(Image.open(file))
 
-        # Save array to file (https://gist.github.com/jdumas/280952624ea4ad68e385b77cdba632c1#file-volume-py-L39)
-        with open(os.path.join(res["out_path"], file.split(os.path.sep)[-1::][0] + ".raw"), "wb") as raw:
-            raw.write(bytearray(image_2d.astype(dtype).flatten()))
+    if res["out_raw"] == "Simple":
+        images = numpy.array(Image.open(files[0]))
+        if len(files) > 1:
+            for i in range(1, len(files)):
+                image_2d = numpy.array(Image.open(files[i]))
+                images = numpy.append(images, image_2d)
+        with open(os.path.join(res["out_path"], "output.raw"), "wb") as raw:
+            raw.write(bytearray(images.astype(dtype).flatten()))
+    else:
+        for file in files:
+            image_2d = numpy.array(Image.open(file))
+
+            # Save array to file (https://gist.github.com/jdumas/280952624ea4ad68e385b77cdba632c1#file-volume-py-L39)
+            with open(os.path.join(res["out_path"], file.split(os.path.sep)[-1::][0] + ".raw"), "wb") as raw:
+                raw.write(bytearray(image_2d.astype(dtype).flatten()))
