@@ -30,56 +30,6 @@ def printHelp():
 
 
 # ================================================================================
-#                   Returns the image header size in bytes
-# ================================================================================
-def getHeaderSize(path):
-    if (os.path.isfile(path)):
-        ft = imghdr.what(path)
-
-        if ft == "jpeg":
-            # Header: "Magic Number" (0xffd8)
-            return 2
-        elif ft == "png":
-            # Header: "Magic Number" (0x89504e470d0a1a0a)
-            return 8
-        elif ft == "gif":
-            # Header: "Magic Number" (0x474946383961 / 0x474946383761)
-            return 6
-        elif ft == "tiff":
-            # Header: "Magic Number" (0x49492a00 / 0x4d4d002a)
-            return 8
-        elif ft == "bmp":
-            # Header: "Magic Number" (0x424d) + 3 more information fields
-            return 14
-        elif ft == "rgb":
-            # Header: "Magic Number" (0x01da) + 12 more information fields
-            return 512
-        elif ft == "pbm":
-            # Header: "Magic Number" (0x50310a / 0x50340a)
-            return 3
-        elif ft == "pgm":
-            # Header: "Magic Number" (0x50320a / 0x50350a)
-            return 3
-        elif ft == "ppm":
-            # Header: "Magic Number" (0x50330a / 0x50360a)
-            return 3
-        elif ft == "webp":
-            # Header: "Magic Number" (0x52494646) + 4 Byte information field + (0x57454250)
-            return 20
-        elif ft == "exr":
-            # Header: "Magic Number" (0x762f3101)
-            pass
-        elif ft == "rast":
-            # Header: ?
-            pass
-        elif ft == "xbm":
-            # Header: ?
-            pass
-
-    return None
-
-
-# ================================================================================
 #           Returns the name of the dict field searched for using regex
 # ================================================================================
 def getFieldName(name, data):
@@ -168,6 +118,31 @@ def validateParameters(args):
 
 
 # ================================================================================
+#                               Validate image type
+# ================================================================================
+def validateImageType(given):
+    given = given.upper()
+
+    # Supported types
+    if given in [
+            "BMP", "DIB",                   # BMP format
+            "XBM", "XPM",                   # X BitMap format
+            "JPG", "JPEG",                  # JPEG format
+            "PPM", "PBM", "PGM", "PNM",     # Netpbm format
+            "PNG", "EPS", "IM", "TGA", "WEBP" "FPX", "PCD", "PIXAR", "PSD"]:
+        return True
+
+    # Not yet supported types
+    if given in [
+            "FLIC", "FLI", "FLC",           # Flic Animation format
+            "TIFF",                         # Tagged Image File Format (one or multiple)
+            "GIF"]:                         # Graphics Interchange Format
+        print(f"\nThe given format {given} is not yet supported! May come in the future!\n")
+
+    return False
+
+
+# ================================================================================
 #                       Validate given Series (MRA / DSA)
 # ================================================================================
 def validateSeries(given):
@@ -241,12 +216,15 @@ def validateMeta(path):
 
 # ================================================================================
 #                                   MAIN-ROUTINE:
-#   1) Validation of parameters
-#   2) Validation of input file/folder
-#   3) Validation of images (if folder was given)
-#   4) Validation of meta data
-#   5) MHD output
-#   6) RAW output (if file was given)
+#   1) Validate parameters
+#   2) Validate input image type
+#   3) Validate series type
+#   4) Validate input file/folder
+#   5) Validate meta information
+#   6) Validate output folder
+#   7) Validate RAW output type
+#   8) MHD output
+#   9) RAW output
 # ================================================================================
 if __name__ == "__main__":
     args = sys.argv[1::]
@@ -265,14 +243,22 @@ if __name__ == "__main__":
         printHelp()
         exit(2)
 
+    #   Validate input image type
+    #   =========================
+    if not validateImageType(res["img_type"]):
+        # Image type not supported
+        print("Image type is not supported (yet)!")
+        printHelp()
+        exit(3)
 
-    #   Validate series
-    #   ===============
+
+    #   Validate series type
+    #   ====================
     if not validateSeries(res["in_series"]):
         # Series is neather DSA nor MRA
         print("Wrong Series given!")
         printHelp()
-        exit(3)
+        exit(4)
 
 
     #   Validate input file/ folder is correct
@@ -281,9 +267,8 @@ if __name__ == "__main__":
     if len(files) == 0:
         print("No suitable path given or directory does not contain images from given type!")
         printHelp()
-        exit(4)
+        exit(5)
 
-    header_size = getHeaderSize(files[0])
     im = Image.open(files[0])
     width, height = im.size
     bit_depth = im.mode
@@ -294,11 +279,10 @@ if __name__ == "__main__":
             lwidth, lheight = im.size
             lbit_depth = im.mode
 
-            if getHeaderSize(files[i]) != header_size \
-                or width != lwidth or height != lheight or bit_depth != lbit_depth:
+            if width != lwidth or height != lheight or bit_depth != lbit_depth:
                 print("Images differ in type or size, information does not match!")
                 printHelp()
-                exit(5)
+                exit(6)
 
 
     #   Validate meta data
@@ -307,7 +291,7 @@ if __name__ == "__main__":
     if None in meta_info:
         print("Meta.json was not fully functional as relevant portions for MHD where missing!")
         printHelp()
-        exit(6)
+        exit(7)
 
 
     #   Create MHD file from skeleton
@@ -318,7 +302,7 @@ if __name__ == "__main__":
         "NDims = 3",
         "DimSize = ",
         "ElementType = ",
-        "HeaderSize = ",
+        "HeaderSize = 0",
         "BinaryData = True ",
         "BinaryDataByteOrderMSB = ",
         "ElementSize = ",
@@ -346,13 +330,7 @@ if __name__ == "__main__":
     else:
         print(f"The given image(s) bitdepth was not 8-Bit, 16-Bit, 32-Bit, 64-Bit! or it was not implemented (correctly): {bit_depth}")
         printHelp()
-        exit(7)
-
-    # HeaderSize (in Bytes, RAW have none)
-    if len(files) != 1:
-        information[4] += str(0) #str(int(header_size/8))
-    else:
-        information[4] += str(0)
+        exit(8)
 
     # Dimensions of output voxel box (width + length)
     information[2] += str(width) + " " + str(height)
@@ -392,13 +370,14 @@ if __name__ == "__main__":
         except Exception:
             print("MHD files require slices (images) to be sorted but given file names can not be sorted!")
             printHelp()
-            exit(8)
+            exit(9)
 
         information[10] += "LIST 2D"
         for file in files:
             information.append(file.split(os.path.sep)[-1::][0] + ".raw")
     else:
-        information[10] += files[0].split(os.path.sep)[-1::][0] + ".raw"
+        information[10] += "output.raw"
+        #information[10] += files[0].split(os.path.sep)[-1::][0] + ".raw"
 
     # Create output folder if nonexistant
     os.makedirs(res["out_path"], exist_ok=True)

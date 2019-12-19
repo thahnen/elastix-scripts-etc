@@ -16,8 +16,6 @@ More (not yet implemented) information fields in MHD file.
 - TransformMatrix (Elements as list)
 - CenterOfRotation (X Y Z)
 - Offset (X Y Z)
-- Slicer preview is a bit overexposed! Maybe change it somehow?
-- As there is no headersize left, maybe remove it when only RAW files are accepted and no PNG whatsoever
 
 Additional tags: [ITK/ MetaIO documentation](https://itk.org/Wiki/ITK/MetaIO/Documentation#Reference:_Tags_of_MetaImage)
 
