@@ -3,6 +3,7 @@
 
 import re
 import sys
+import os
 import os.path
 import numpy
 import json
@@ -14,19 +15,37 @@ from PIL import Image
 # ================================================================================
 #       Prints the help message (also done when the parameters where wrong!)
 # ================================================================================
-def printHelp():
-    print("\nimg2mhd.py : Converting sliced image(s) and metadata to mhd (+raw) format\n"
-            + "=========================================================================\n")
+def printHelp(topic = None):
+    if topic == "type":
+        print("Type")
+    elif topic == "series":
+        print("Series")
+    elif topic == "input":
+        print("Input file/ folder")
+    elif topic == "meta":
+        print("Meta file")
+    elif topic == "output":
+        print("Output folder")
+    elif topic == "raw":
+        print("RAW output file(s)")
+    else:
+        print("\nimg2mhd.py : Converting sliced image(s) and metadata to mhd (+raw) format\n"
+                + "=========================================================================\n")
 
-    print("USAGE:\n"
-            + "\tpython3 img2mhd.py -type {Image Type} -series {Series} -in {Files} -meta {Files} -out {File} -raw {Type}\n\n"
-            + "Input image type:\t{jpg/jpeg | png | gif | tiff | bmp | rgb | pbm/pgm/ppm | webp}\n"
-            + "Input series:\t\t{MRA | DSA}\n"
-            + "Input files:\t\t{Single image file | Folder containing sorted images}\n"
-            + "Meta information:\tMeta.json\n"
-            + "Output file:\t\t{Output filename | Output folder}\n"
-            + "Output RAW iamges:\t{Simple | Multiple}")
-
+        print("USAGE:\n"
+                + "\tpython3 img2mhd.py -type {Image type} -series {Series} -in {Files} -meta {Files} -out {File} -raw {Type}\n\n\n"
+                + "Image type:\t\t{JPG/JPEG | BMP/DIB | XBM/XPM | PPM/PBM/PGM/PNM | PNG | EPS | IM | TGA | WEBP | FPX | PCD | PIXAR | PSD}\n"
+                + "\t\t\t=> Default: PNG\n\n"
+                + "Input series:\t\t{MRA | DSA}\n"
+                + "\t\t\t=> Default: MRA\n\n"
+                + "Input files:\t\t{Single image | Folder containing SORTED images}\n\n"
+                + "Meta information:\tMeta.json\n\n"
+                + "Output files:\t\t{Output filename | Output folder}\n"
+                + "\t\t\t=> Default: Current Directory\n\n"
+                + "Output RAW iamges:\t{Simple | Multiple}\n"
+                + "\t\t\t=> Default: Simple\n\n"
+                + "For more information on different parameters use:\n"
+                + "\tpython3 img2mhd.py -h {type | series | in | meta | out | raw}\n")
 
 
 # ================================================================================
@@ -44,64 +63,64 @@ def getFieldName(name, data):
 # ================================================================================
 #               Validates that all parameters given are correct!
 #   TODO: handle meta information using other file name or another format
-#   TODO: handle default parameter
+#   TODO: handle parameters correctly (assert that "-type -series" is not valid)
 # ================================================================================
 def validateParameters(args):
     try:
-        idx_type = args.index("-type")
-        img_type = args[idx_type+1]
+        index = args.index("-type")
+        img_type = args[index+1]
+        
+        del args[index+1]
+        del args[index]
     except Exception:
-        # No type given!
-        return None
-
-    del args[idx_type+1]
-    del args[idx_type]
+        # No type given - assert PNG
+        img_type = "PNG"
 
     try:
-        idx_series = args.index("-series")
-        img_series = args[idx_series+1]
-    except Exception:
-        # No series given!
-        return None
+        index = args.index("-series")
+        img_series = args[index+1]
 
-    del args[idx_series+1]
-    del args[idx_series]
+        del args[index+1]
+        del args[index]
+    except Exception:
+        # No series given - assert MRA
+        img_series = "MRA"
+    
+    try:
+        index = args.index("-raw")
+        out_raw = args[index+1]
+
+        del args[index+1]
+        del args[index]
+    except Exception:
+        # No info on raw output given - assert SIMPLE
+        out_raw = "SIMPLE"
 
     try:
-        idx_in = args.index("-in")
-        img_path = args[idx_in+1]
+        index = args.index("-out")
+        out_path = args[index+1]
+
+        del args[index+1]
+        del args[index]
+    except Exception:
+        # No output folder given - assert CWD
+        out_path = os.getcwd()
+
+    try:
+        index = args.index("-in")
+        img_path = args[index+1]
     except Exception:
         # No input file/ folder given
         return None
 
-    del args[idx_in+1]
-    del args[idx_in]
+    del args[index+1]
+    del args[index]
 
     try:
-        idx_out = args.index("-out")
-        out_path = args[idx_out+1]
-    except Exception:
-        # No output folder given
-        return None
+        index = args.index("-meta")
+        meta_json = args[index+1]
 
-    del args[idx_out+1]
-    del args[idx_out]
-
-    try:
-        idx_raw = args.index("-raw")
-        out_raw = args[idx_raw+1]
-    except Exception:
-        # No info on simple or multiple raw output given
-        return None
-    
-    del args[idx_raw+1]
-    del args[idx_raw]
-
-    try:
-        idx_me = args.index("-meta")
-        meta_json = args[idx_me+1]
-
-        assert bool(re.search(r'(?i)meta.json', args[idx_me+1]))
+        assert bool(re.search(r'(?i)meta.json', args[index+1]))
     except Exception:
         # No Meta.json given (or using another name which is not implemented yet!)
         return None
@@ -183,6 +202,8 @@ def validateImage(path, img_type):
 #       "slice spacing" : Float
 #       "pixel spacing" : [Float, Float]
 #   }
+#
+#   TODO: append test for anatomical orientation and add default values!
 # ================================================================================
 def validateMeta(path):
     with open(path, "r") as in_file:
@@ -234,6 +255,14 @@ if __name__ == "__main__":
         exit(1)
 
 
+    #   Check for help request
+    #   ======================
+    #   TODO: implement help
+    if args[0] == "-h":
+        print("Help was called!")
+        exit()
+
+
     #   Validate parameters
     #   ===================
     res = validateParameters(args)
@@ -259,6 +288,11 @@ if __name__ == "__main__":
         print("Wrong Series given!")
         printHelp()
         exit(4)
+
+    
+    #   Validate RAW output
+    #   ===================
+    #   TODO: implement validation function!
 
 
     #   Validate input file/ folder is correct
@@ -328,7 +362,7 @@ if __name__ == "__main__":
         # 4 Byte floating point pixels -> MET_FLOAT
         information[3] += "MET_FLOAT"
     else:
-        print(f"The given image(s) bitdepth was not 8-Bit, 16-Bit, 32-Bit, 64-Bit! or it was not implemented (correctly): {bit_depth}")
+        print(f"The given image(s) bitdepth was not 8-Bit, 16-Bit, 32-Bit, 64-Bit or it was not implemented (correctly): {bit_depth}")
         printHelp()
         exit(8)
 
@@ -363,10 +397,11 @@ if __name__ == "__main__":
         information[9] += "True"
 
     # ElementDataFile (one or list)
+    # TODO: change single output file name
     if len(files) != 1 and res["out_raw"] != "Simple":
         try:
-            # sort by file names where filenames are numbers only (0.xyz ... 1000.xyz ...)
-            files.sort(key = lambda file: int(file.split(os.path.sep)[-1::][0].split(".")[0]))
+            # sort by file names where filenames are numbered ([…].0.xyz ... […].1000.xyz ...)
+            files.sort(key = lambda file: int(file.split(os.path.sep)[-1::][0].split(".")[-2]))
         except Exception:
             print("MHD files require slices (images) to be sorted but given file names can not be sorted!")
             printHelp()
@@ -374,10 +409,12 @@ if __name__ == "__main__":
 
         information[10] += "LIST 2D"
         for file in files:
-            information.append(file.split(os.path.sep)[-1::][0] + ".raw")
+            # replace the file extension with raw
+            information.append(
+                os.path.splitext(file.split(os.path.sep)[-1::][0])[0] + ".raw"
+            )
     else:
         information[10] += "output.raw"
-        #information[10] += files[0].split(os.path.sep)[-1::][0] + ".raw"
 
     # Create output folder if nonexistant
     os.makedirs(res["out_path"], exist_ok=True)
