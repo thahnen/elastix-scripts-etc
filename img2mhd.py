@@ -390,6 +390,7 @@ if __name__ == "__main__":
 
     #   Create RAW image if only one image is given
     #   ===========================================
+    #   TODO: change "image" names to raw, remove png
     if    "MET_CHAR" in information[3]:          dtype = numpy.int8 
     elif  "MET_UCHAR" in information[3]:         dtype = numpy.uint8
     elif  "MET_USHORT" in information[3]:        dtype = numpy.uint16
