@@ -5,10 +5,26 @@ import re
 import sys
 import os
 import os.path
-import numpy
 import json
+import numpy
 import imghdr
 from PIL import Image
+
+
+
+# ================================================================================
+#                   Error codes returned by the program
+# ================================================================================
+ERR_NO_PARAMS = 1           # no parameters given
+ERR_HELP_TOPIC = 2          # no or wrong help topic
+ERR_PARAMS_INCORRECT = 3    # parameters incorrect
+ERR_IMG_TYPE = 4            # input image type not supported
+ERR_SERIES = 5              # series wrong
+ERR_INPUT = 6               # input file/ folder incorrect
+ERR_INPUT_DIFFER = 7        # input images differ
+ERR_META = 8                # meta information incorrect
+ERR_IMG_TYPE_DEPTH = 9      # input image data types incorrect
+ERR_IMG_NAMES = 10          # input image names incorrect
 
 
 
@@ -17,18 +33,24 @@ from PIL import Image
 # ================================================================================
 def printHelp(topic = None):
     if topic == "type":
-        print("Type")
+        print("Help: Type\n"
+                + "Info: File type of the image input data!\n")
     elif topic == "series":
-        print("Series")
+        print("Help: Series\n"
+                + "Info: Type of image input series, MRA or DSA!\n")
     elif topic == "input":
-        print("Input file/ folder")
+        print("Help: Input file/ folder\n"
+                + "Info: Path to the image input, one single file or folder with multiple!\n")
     elif topic == "meta":
-        print("Meta file")
+        print("Help: Meta file\n"
+                + "Info: File containing the meta information for the MHD format!\n")
     elif topic == "output":
-        print("Output folder")
+        print("Help: Output folder\n"
+                + "Info: Path for this scripts output!\n")
     elif topic == "raw":
-        print("RAW output file(s)")
-    else:
+        print("Help: RAW output file(s)\n"
+                + "Info: Whether the raw image output should be saved in a simple or in multiple files\n")
+    elif topic == None:
         print("\nimg2mhd.py : Converting sliced image(s) and metadata to mhd (+raw) format\n"
                 + "=========================================================================\n")
 
@@ -46,6 +68,8 @@ def printHelp(topic = None):
                 + "\t\t\t=> Default: Simple\n\n"
                 + "For more information on different parameters use:\n"
                 + "\tpython3 img2mhd.py -h {type | series | in | meta | out | raw}\n")
+    else:
+        raise Exception
 
 
 # ================================================================================
@@ -62,14 +86,23 @@ def getFieldName(name, data):
 
 # ================================================================================
 #               Validates that all parameters given are correct!
-#   TODO: handle meta information using other file name or another format
-#   TODO: handle parameters correctly (assert that "-type -series" is not valid)
+#   TODO: handle meta information using other file name or format
 # ================================================================================
 def validateParameters(args):
+    # Assert no parameters after another without values
+    try:
+        length = len(args)
+        assert length > 1
+
+        for i in range(1, length):
+            assert args[i-1][0] != "-" and args[i][0] != "-"
+    except AssertionError:
+        return None
+
     try:
         index = args.index("-type")
         img_type = args[index+1]
-        
+
         del args[index+1]
         del args[index]
     except Exception:
@@ -85,7 +118,7 @@ def validateParameters(args):
     except Exception:
         # No series given - assert MRA
         img_series = "MRA"
-    
+
     try:
         index = args.index("-raw")
         out_raw = args[index+1]
@@ -123,6 +156,15 @@ def validateParameters(args):
         assert bool(re.search(r'(?i)meta.json', args[index+1]))
     except Exception:
         # No Meta.json given (or using another name which is not implemented yet!)
+        return None
+
+    del args[index+1]
+    del args[index]
+
+    try:
+        assert len(args) == 0
+    except Exception:
+        # Too many (unknown) parameters given
         return None
 
     # Return everything structured
@@ -180,11 +222,11 @@ def validateImage(path, img_type):
                 continue
 
             # Check if file name ("type") equals given type
-            if bool(re.search(img_type, file.split(".")[-1::][0], re.IGNORECASE)):
+            if bool(re.search(img_type, file.split(".")[-1], re.IGNORECASE)):
                  files.append(os.path.join(path, file))
     elif os.path.isfile(path):
         # Check if file name ("type") equals given type
-        if bool(re.search(img_type, path.split(".")[-1::][0], re.IGNORECASE)):
+        if bool(re.search(img_type, path.split(".")[-1], re.IGNORECASE)):
             files.append(path)
 
     return files
@@ -201,15 +243,14 @@ def validateImage(path, img_type):
 #       "slice thickness" : Float
 #       "slice spacing" : Float
 #       "pixel spacing" : [Float, Float]
+#       "anatomical orientation" : String => should look like "[R|L][A|P][S|I]"
 #   }
-#
-#   TODO: append test for anatomical orientation and add default values!
 # ================================================================================
 def validateMeta(path):
     with open(path, "r") as in_file:
         data = json.load(in_file)
 
-    cols = rows = pxl_size = pxl_space_x = pxl_space_y = pxl_space_z = None
+    cols = rows = pxl_size = pxl_space_x = pxl_space_y = pxl_space_z, ana_ori = None
 
     # Check if there is a MRA field in JSON
     found = getFieldName("mra", data)
@@ -221,17 +262,50 @@ def validateMeta(path):
             getFieldName("rows", data),
             getFieldName("slice thickness", data),
             getFieldName("pixel spacing", data),
-            getFieldName("slice spacing", data)
+            getFieldName("slice spacing", data),
+            getFieldName("anatomical orientation", data)
         ]
-        if not None in found:
+
+        # Columns (no default value)
+        if found[0] != None:
             cols = data[found[0]]
+
+        # Rows (no default value)
+        if found[1] != None:
             rows = data[found[1]]
+
+        # Pixel size
+        if found[2] != None:
             pxl_size = data[found[2]]
+        else:
+            # Default: 1
+            pxl_size = 1
+
+        # Pixel space x/y
+        # TODO: handle list length != 2
+        if found[3] != None:
             pxl_space_x = data[found[3]][0]
             pxl_space_y = data[found[3]][1]
-            pxl_space_z = data[found[4]]
+        else:
+            # Default: 1/1
+            pxl_space_x = 1
+            pxl_space_y = 1
 
-    return cols, rows, pxl_size, pxl_space_x, pxl_space_y, pxl_space_z
+        # Pixel space z
+        if found[4] != None:
+            pxl_space_z = data[found[4]]
+        else:
+            # Default: 1
+            pxl_space_z = 1
+
+        # Anatomical Orientation
+        if found[5] != None:
+            ana_ori = data[found[5]]
+        else:
+            # Default: RAI
+            ana_ori = "RAI"
+
+    return cols, rows, pxl_size, pxl_space_x, pxl_space_y, pxl_space_z, ana_ori
 
 
 
@@ -248,19 +322,25 @@ def validateMeta(path):
 #   9) RAW output
 # ================================================================================
 if __name__ == "__main__":
-    args = sys.argv[1::]
+    args = sys.argv[1:]
     if len(args) == 0:
         print("No parameters where given!")
         printHelp()
-        exit(1)
+        exit(ERR_NO_PARAMS)
 
 
     #   Check for help request
     #   ======================
-    #   TODO: implement help
-    if args[0] == "-h":
-        print("Help was called!")
-        exit()
+    if "-h" in args:
+        try:
+            printHelp(
+                args[args.index("-h") + 1].lower()
+            )
+        except Exception:
+            print("Wrong or no topic given for further help information!")
+            code = ERR_HELP_TOPIC
+
+        exit(locals()["code"] if "code" in locals() else 0)
 
 
     #   Validate parameters
@@ -270,7 +350,7 @@ if __name__ == "__main__":
         # Parameters are not correct!
         print("Parameters are not correct!")
         printHelp()
-        exit(2)
+        exit(ERR_PARAMS_INCORRECT)
 
     #   Validate input image type
     #   =========================
@@ -278,7 +358,7 @@ if __name__ == "__main__":
         # Image type not supported
         print("Image type is not supported (yet)!")
         printHelp()
-        exit(3)
+        exit(ERR_IMG_TYPE)
 
 
     #   Validate series type
@@ -287,9 +367,9 @@ if __name__ == "__main__":
         # Series is neather DSA nor MRA
         print("Wrong Series given!")
         printHelp()
-        exit(4)
+        exit(ERR_SERIES)
 
-    
+
     #   Validate RAW output
     #   ===================
     #   TODO: implement validation function!
@@ -301,7 +381,7 @@ if __name__ == "__main__":
     if len(files) == 0:
         print("No suitable path given or directory does not contain images from given type!")
         printHelp()
-        exit(5)
+        exit(ERR_INPUT)
 
     im = Image.open(files[0])
     width, height = im.size
@@ -316,7 +396,7 @@ if __name__ == "__main__":
             if width != lwidth or height != lheight or bit_depth != lbit_depth:
                 print("Images differ in type or size, information does not match!")
                 printHelp()
-                exit(6)
+                exit(ERR_INPUT_DIFFER)
 
 
     #   Validate meta data
@@ -325,12 +405,12 @@ if __name__ == "__main__":
     if None in meta_info:
         print("Meta.json was not fully functional as relevant portions for MHD where missing!")
         printHelp()
-        exit(7)
+        exit(ERR_META)
 
 
     #   Create MHD file from skeleton
     #   =============================
-    #   TODO: Fields: Position, Orientation, AnatomicalOrientation, ElementNumberOfChannels
+    #   TODO: Fields: Position, Orientation, ElementNumberOfChannels
     information = [
         "ObejctType = Image",
         "NDims = 3",
@@ -342,6 +422,7 @@ if __name__ == "__main__":
         "ElementSize = ",
         "ElementSpacing = ",
         "ElementByteOrderMSB = ",
+        "AnatomicalOrientation = ",
         "ElementDataFile = "
     ]
 
@@ -364,7 +445,7 @@ if __name__ == "__main__":
     else:
         print(f"The given image(s) bitdepth was not 8-Bit, 16-Bit, 32-Bit, 64-Bit or it was not implemented (correctly): {bit_depth}")
         printHelp()
-        exit(8)
+        exit(ERR_IMG_TYPE_DEPTH)
 
     # Dimensions of output voxel box (width + length)
     information[2] += str(width) + " " + str(height)
@@ -396,25 +477,27 @@ if __name__ == "__main__":
         information[6] += "True"
         information[9] += "True"
 
+    # AnatomicalOrientation
+    information[10] = meta_info[6]
+
     # ElementDataFile (one or list)
-    # TODO: change single output file name
     if len(files) != 1 and res["out_raw"] != "Simple":
         try:
             # sort by file names where filenames are numbered ([…].0.xyz ... […].1000.xyz ...)
-            files.sort(key = lambda file: int(file.split(os.path.sep)[-1::][0].split(".")[-2]))
+            files.sort(key = lambda file: int(file.split(os.path.sep)[-1].split(".")[-2]))
         except Exception:
             print("MHD files require slices (images) to be sorted but given file names can not be sorted!")
             printHelp()
-            exit(9)
+            exit(ERR_IMG_NAMES)
 
-        information[10] += "LIST 2D"
+        information[11] += "LIST 2D"
         for file in files:
             # replace the file extension with raw
             information.append(
-                os.path.splitext(file.split(os.path.sep)[-1::][0])[0] + ".raw"
+                os.path.splitext(file.split(os.path.sep)[-1])[0] + ".raw"
             )
     else:
-        information[10] += "output.raw"
+        information[11] += "output.raw"
 
     # Create output folder if nonexistant
     os.makedirs(res["out_path"], exist_ok=True)
@@ -427,8 +510,7 @@ if __name__ == "__main__":
 
     #   Create RAW image if only one image is given
     #   ===========================================
-    #   TODO: change "image" names to raw, remove png
-    if    "MET_CHAR" in information[3]:          dtype = numpy.int8 
+    if    "MET_CHAR" in information[3]:          dtype = numpy.int8
     elif  "MET_UCHAR" in information[3]:         dtype = numpy.uint8
     elif  "MET_USHORT" in information[3]:        dtype = numpy.uint16
     elif  "MET_SHORT" in information[3]:         dtype = numpy.int16
@@ -455,5 +537,5 @@ if __name__ == "__main__":
             image_2d = numpy.array(Image.open(file))
 
             # Save array to file (https://gist.github.com/jdumas/280952624ea4ad68e385b77cdba632c1#file-volume-py-L39)
-            with open(os.path.join(res["out_path"], file.split(os.path.sep)[-1::][0] + ".raw"), "wb") as raw:
+            with open(os.path.join(res["out_path"], file.split(os.path.sep)[-1] + ".raw"), "wb") as raw:
                 raw.write(bytearray(image_2d.astype(dtype).flatten()))
