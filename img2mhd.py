@@ -20,16 +20,18 @@ ERR_HELP_TOPIC = 2          # no or wrong help topic
 ERR_PARAMS_INCORRECT = 3    # parameters incorrect
 ERR_IMG_TYPE = 4            # input image type not supported
 ERR_SERIES = 5              # series wrong
-ERR_INPUT = 6               # input file/ folder incorrect
-ERR_INPUT_DIFFER = 7        # input images differ
-ERR_META = 8                # meta information incorrect
-ERR_IMG_TYPE_DEPTH = 9      # input image data types incorrect
-ERR_IMG_NAMES = 10          # input image names incorrect
+ERR_RAW = 6                 # raw output wrong
+ERR_INPUT = 7               # input file/ folder incorrect
+ERR_INPUT_DIFFER = 8        # input images differ
+ERR_META = 9                # meta information incorrect
+ERR_META_AO = 10            # anatomical orientation in meta data is wrong
+ERR_IMG_TYPE_DEPTH = 11     # input image data types incorrect
+ERR_IMG_NAMES = 12          # input image names incorrect
 
 
 
 # ================================================================================
-#       Prints the help message (also done when the parameters where wrong!)
+#       Prints the help message (also done when something went wrong!)
 # ================================================================================
 def printHelp(topic = None):
     if topic == "type":
@@ -211,6 +213,13 @@ def validateSeries(given):
 
 
 # ================================================================================
+#                   Validate RAW output (SIMPLE / MULTIPLE)
+# ================================================================================
+def validateRAW(given):
+    return given.upper() in ["SIMPLE", "MULTIPLE"]
+
+
+# ================================================================================
 #               Check if Image input is a single file or folder
 # ================================================================================
 def validateImage(path, img_type):
@@ -243,7 +252,7 @@ def validateImage(path, img_type):
 #       "slice thickness" : Float
 #       "slice spacing" : Float
 #       "pixel spacing" : [Float, Float]
-#       "anatomical orientation" : String => should look like "[R|L][A|P][S|I]"
+#       "anatomical orientation" : String"
 #   }
 # ================================================================================
 def validateMeta(path):
@@ -308,16 +317,56 @@ def validateMeta(path):
     return cols, rows, pxl_size, pxl_space_x, pxl_space_y, pxl_space_z, ana_ori
 
 
+# ================================================================================
+#               Checks if the anatomical orientation is correct
+#
+#   Anatomical orientation should look like this: [R|L][A|P][S|I]
+#   - R (right) / L (left)
+#   - A (anterior) / P (posterior)
+#   - S (superior) / I (inferior)
+# ================================================================================
+def validateAnatomicalOrientation(given):
+    if len(given) != 3:
+        # Anatomical orientation is wrongly formatted
+        return None
+
+    given = given.upper()
+
+    if "R" in given:        r = True
+    else:
+        if "L" in given:    r = False
+        else:
+            # neather "R" nor "L" found
+            return None
+
+    if "A" in given:        a = True
+    else:
+        if "P" in given:    a = False
+        else:
+            # neather "A" nor "P" found
+            return None
+
+    if "S" in given:        s = True
+    else:
+        if "I" in given:    s = False
+        else:
+            # neather "S" nor "S" found
+            return None
+
+    # Rebuild the given string (so it works on Slicer)
+    return ("R" if r else "L") + ("A" if a else "P") + ("S" if s else "I")
+
+
 
 # ================================================================================
 #                                   MAIN-ROUTINE:
 #   1) Validate parameters
 #   2) Validate input image type
 #   3) Validate series type
-#   4) Validate input file/folder
-#   5) Validate meta information
-#   6) Validate output folder
-#   7) Validate RAW output type
+#   4) Validate RAW output type
+#   5) Validate input file/folder
+#   6) Validate meta information
+#   7) Validate anatomical orientation
 #   8) MHD output
 #   9) RAW output
 # ================================================================================
@@ -372,7 +421,11 @@ if __name__ == "__main__":
 
     #   Validate RAW output
     #   ===================
-    #   TODO: implement validation function!
+    if not validateRAW(res["out_raw"]):
+        # RAW output matches neather Simple nor Multiple
+        print("Wrong RAW output given!")
+        printHelp()
+        exit(ERR_RAW)
 
 
     #   Validate input file/ folder is correct
@@ -406,6 +459,16 @@ if __name__ == "__main__":
         print("Meta.json was not fully functional as relevant portions for MHD where missing!")
         printHelp()
         exit(ERR_META)
+
+
+    #   Validate anatomical orientation
+    #   ===============================
+    meta_info[6] = validateAnatomicalOrientation(meta_info[6])
+    if not meta_info[6]:
+        # anatomical orientation is wrong or can not be corrected!
+        print("Anatomical orientation in meta data wrong!")
+        printHelp()
+        exit(ERR_META_AO)
 
 
     #   Create MHD file from skeleton
