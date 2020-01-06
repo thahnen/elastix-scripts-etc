@@ -88,16 +88,20 @@ def getFieldName(name, data):
 
 # ================================================================================
 #               Validates that all parameters given are correct!
-#   TODO: handle meta information using other file name or format
+#       TODO: handle meta information using other file name or format
 # ================================================================================
 def validateParameters(args):
-    # Assert no parameters after another without values
+    # Assert no parameters following another without values
     try:
         length = len(args)
         assert length > 1
 
         for i in range(1, length):
-            assert args[i-1][0] != "-" and args[i][0] != "-"
+            assert (
+                args[i-1].startswith("-") and not args[i].startswith("-")
+            ) or (
+                not args[i-1].startswith("-") and args[i].startswith("-")
+            )
     except AssertionError:
         return None
 
@@ -128,8 +132,8 @@ def validateParameters(args):
         del args[index+1]
         del args[index]
     except Exception:
-        # No info on raw output given - assert SIMPLE
-        out_raw = "SIMPLE"
+        # No info on raw output given - assert Simple
+        out_raw = "Simple"
 
     try:
         index = args.index("-out")
@@ -138,7 +142,7 @@ def validateParameters(args):
         del args[index+1]
         del args[index]
     except Exception:
-        # No output folder given - assert CWD
+        # No output folder given - assert current working directory
         out_path = os.getcwd()
 
     try:
@@ -259,7 +263,7 @@ def validateMeta(path):
     with open(path, "r") as in_file:
         data = json.load(in_file)
 
-    cols = rows = pxl_size = pxl_space_x = pxl_space_y = pxl_space_z, ana_ori = None
+    cols = rows = pxl_size = pxl_space_x = pxl_space_y = pxl_space_z = ana_ori = None
 
     # Check if there is a MRA field in JSON
     found = getFieldName("mra", data)
@@ -369,6 +373,8 @@ def validateAnatomicalOrientation(given):
 #   7) Validate anatomical orientation
 #   8) MHD output
 #   9) RAW output
+#
+#   TODO: inform user, if only one image given but "Multiple" raw output selected!
 # ================================================================================
 if __name__ == "__main__":
     args = sys.argv[1:]
@@ -454,7 +460,7 @@ if __name__ == "__main__":
 
     #   Validate meta data
     #   ==================
-    meta_info = validateMeta(res["in_meta"])
+    meta_info = list(validateMeta(res["in_meta"]))
     if None in meta_info:
         print("Meta.json was not fully functional as relevant portions for MHD where missing!")
         printHelp()
@@ -473,7 +479,7 @@ if __name__ == "__main__":
 
     #   Create MHD file from skeleton
     #   =============================
-    #   TODO: Fields: Position, Orientation, ElementNumberOfChannels
+    #   TODO: Fields: Position, TransformMatrix, Offset, CenterOfRotation
     information = [
         "ObejctType = Image",
         "NDims = 3",
@@ -541,10 +547,10 @@ if __name__ == "__main__":
         information[9] += "True"
 
     # AnatomicalOrientation
-    information[10] = meta_info[6]
+    information[10] += meta_info[6]
 
     # ElementDataFile (one or list)
-    if len(files) != 1 and res["out_raw"] != "Simple":
+    if len(files) > 1:
         try:
             # sort by file names where filenames are numbered ([…].0.xyz ... […].1000.xyz ...)
             files.sort(key = lambda file: int(file.split(os.path.sep)[-1].split(".")[-2]))
@@ -553,6 +559,7 @@ if __name__ == "__main__":
             printHelp()
             exit(ERR_IMG_NAMES)
 
+    if len(files) != 1 and res["out_raw"] != "Simple":
         information[11] += "LIST 2D"
         for file in files:
             # replace the file extension with raw
@@ -587,12 +594,13 @@ if __name__ == "__main__":
     elif  "MET_DOUBLE" in information[3]:        dtype = numpy.double
 
 
-    if res["out_raw"] == "Simple":
+    if len(files) == 1 or res["out_raw"] == "Simple":
         images = numpy.array(Image.open(files[0]))
         if len(files) > 1:
             for i in range(1, len(files)):
-                image_2d = numpy.array(Image.open(files[i]))
-                images = numpy.append(images, image_2d)
+                images = numpy.append(
+                    images, numpy.array(Image.open(files[i]))
+                )
         with open(os.path.join(res["out_path"], "output.raw"), "wb") as raw:
             raw.write(bytearray(images.astype(dtype).flatten()))
     else:
@@ -600,5 +608,5 @@ if __name__ == "__main__":
             image_2d = numpy.array(Image.open(file))
 
             # Save array to file (https://gist.github.com/jdumas/280952624ea4ad68e385b77cdba632c1#file-volume-py-L39)
-            with open(os.path.join(res["out_path"], file.split(os.path.sep)[-1] + ".raw"), "wb") as raw:
+            with open(os.path.join(res["out_path"], os.path.splitext(file.split(os.path.sep)[-1])[0] + ".raw"), "wb") as raw:
                 raw.write(bytearray(image_2d.astype(dtype).flatten()))
